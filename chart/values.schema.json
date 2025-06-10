@@ -2628,6 +2628,17 @@
       "additionalProperties": false,
       "type": "object"
     },
+    "Logging": {
+      "properties": {
+        "encoding": {
+          "type": "string",
+          "description": "Encoding specifies the format of vCluster logs, it can either be json or console."
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "description": "Logging holds the log encoding details"
+    },
     "MetricsServer": {
       "properties": {
         "enabled": {
@@ -4627,6 +4638,10 @@
     "sleepMode": {
       "$ref": "#/$defs/SleepMode",
       "description": "SleepMode holds the native sleep mode configuration for Pro clusters"
+    },
+    "logging": {
+      "$ref": "#/$defs/Logging",
+      "description": "Logging provides structured logging options"
     }
   },
   "additionalProperties": false,
