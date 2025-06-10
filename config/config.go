@@ -101,7 +101,7 @@ type PrivateNodes struct {
 	// KubeProxy holds dedicated kube proxy configuration.
 	KubeProxy KubeProxy `json:"kubeProxy,omitempty"`
 
-	// Kubelet holds dedicated kubelet configuration.
+	// Kubelet holds kubelet configuration that is used for all nodes.
 	Kubelet Kubelet `json:"kubelet,omitempty"`
 
 	// CNI holds dedicated CNI configuration.
@@ -112,6 +112,9 @@ type PrivateNodes struct {
 
 	// AutoUpgrade holds configuration for auto upgrade.
 	AutoUpgrade AutoUpgrade `json:"autoUpgrade,omitempty"`
+
+	// JoinNode holds configuration specifically used during joining the node (see "kubeadm join").
+	JoinNode JoinConfiguration `json:"joinNode,omitempty"`
 }
 
 type Standalone struct {
@@ -135,6 +138,44 @@ type StandaloneJoinNode struct {
 	// Name defines the name of the standalone node. If empty the node will get the hostname as name.
 	Name string `json:"name,omitempty"`
 
+	JoinConfiguration `json:",inline"`
+}
+
+type JoinConfiguration struct {
+	// PreJoinCommands are commands that will be executed before the join process starts.
+	PreJoinCommands []string `json:"preJoinCommands,omitempty"`
+
+	// PostJoinCommands are commands that will be executed after the join process starts.
+	PostJoinCommands []string `json:"postJoinCommands,omitempty"`
+
+	// Containerd holds configuration for the containerd join process.
+	Containerd ContainerdJoin `json:"containerd,omitempty"`
+
+	// CACertPath is the path to the SSL certificate authority used to
+	// secure communications between node and control-plane.
+	// Defaults to "/etc/kubernetes/pki/ca.crt".
+	CACertPath string `json:"caCertPath,omitempty"`
+
+	// SkipPhases is a list of phases to skip during command execution.
+	// The list of phases can be obtained with the "kubeadm join --help" command.
+	SkipPhases []string `json:"skipPhases,omitempty"`
+
+	// NodeRegistration holds configuration for the node registration similar to the kubeadm node registration.
+	NodeRegistration NodeRegistration `json:"nodeRegistration,omitempty"`
+}
+
+type ContainerdJoin struct {
+	// Enabled defines if containerd should be installed and configured by vCluster.
+	Enabled bool `json:"enabled,omitempty"`
+
+	// PauseImage is the image for the pause container.
+	PauseImage string `json:"pauseImage,omitempty"`
+}
+
+type NodeRegistration struct {
+	// CRI socket is the socket for the CRI.
+	CRISocket string `json:"criSocket,omitempty"`
+
 	// KubeletExtraArgs passes through extra arguments to the kubelet. The arguments here are passed to the kubelet command line via the environment file
 	// kubeadm writes at runtime for the kubelet to source. This overrides the generic base-level configuration in the kubelet-config ConfigMap
 	// Flags have higher priority when parsing. These values are local and specific to the node kubeadm is executing on.
@@ -142,21 +183,48 @@ type StandaloneJoinNode struct {
 	// Extra arguments will override existing default arguments. Duplicate extra arguments are allowed.
 	KubeletExtraArgs []KubeletExtraArg `json:"kubeletExtraArgs,omitempty"`
 
+	// Taints are additional taints to set for the kubelet.
+	Taints []KubeletJoinTaint `json:"taints,omitempty"`
+
 	// IgnorePreflightErrors provides a slice of pre-flight errors to be ignored when the current node is registered, e.g. 'IsPrivilegedUser,Swap'.
 	// Value 'all' ignores errors from all checks.
 	IgnorePreflightErrors []string `json:"ignorePreflightErrors,omitempty"`
+
+	// ImagePullPolicy specifies the policy for image pulling during kubeadm "init" and "join" operations.
+	// The value of this field must be one of "Always", "IfNotPresent" or "Never".
+	// If this field is unset kubeadm will default it to "IfNotPresent", or pull the required images if not present on the host.
+	ImagePullPolicy string `json:"imagePullPolicy,omitempty"`
 }
 
+// KubeletExtraArg represents an argument with a name and a value.
 type KubeletExtraArg struct {
 	// Name is the name of the argument.
-	Name string `json:"name,omitempty"`
+	Name string `json:"name"`
 	// Value is the value of the argument.
+	Value string `json:"value"`
+}
+
+type KubeletJoinTaint struct {
+	// Required. The taint key to be applied to a node.
+	Key string `json:"key"`
+	// The taint value corresponding to the taint key.
+	// +optional
 	Value string `json:"value,omitempty"`
+	// Required. The effect of the taint on pods
+	// that do not tolerate the taint.
+	// Valid effects are NoSchedule, PreferNoSchedule and NoExecute.
+	Effect string `json:"effect"`
 }
 
 type LocalPathProvisioner struct {
 	// Enabled defines if LocalPathProvisioner should be enabled.
 	Enabled bool `json:"enabled,omitempty"`
+
+	// Image is the image for local path provisioner.
+	Image string `json:"image,omitempty"`
+
+	// ImagePullPolicy is the policy how to pull the image.
+	ImagePullPolicy string `json:"imagePullPolicy,omitempty"`
 }
 
 type CNI struct {
@@ -167,13 +235,22 @@ type CNI struct {
 type CNIFlannel struct {
 	// Enabled defines if Flannel should be enabled.
 	Enabled bool `json:"enabled,omitempty"`
+
+	// Image is the image for Flannel main container.
+	Image string `json:"image,omitempty"`
+
+	// InitImage is the image for Flannel init container.
+	InitImage string `json:"initImage,omitempty"`
+
+	// ImagePullPolicy is the policy how to pull the image.
+	ImagePullPolicy string `json:"imagePullPolicy,omitempty"`
 }
 
 type AutoUpgrade struct {
 	// Enabled defines if auto upgrade should be enabled.
 	Enabled bool `json:"enabled,omitempty"`
 
-	// Image is the image for the auto upgrade. If empty defaults to the controlPlane.statefulSet.image.
+	// Image is the image for the auto upgrade pod started by vCluster. If empty defaults to the controlPlane.statefulSet.image.
 	Image string `json:"image,omitempty"`
 
 	// ImagePullPolicy is the policy how to pull the image.
@@ -2049,13 +2126,64 @@ type ControlPlaneWorkloadServiceAccount struct {
 
 type ControlPlaneProbes struct {
 	// LivenessProbe specifies if the liveness probe for the container should be enabled
-	LivenessProbe EnableSwitch `json:"livenessProbe,omitempty"`
+	LivenessProbe LivenessProbe `json:"livenessProbe,omitempty"`
 
 	// ReadinessProbe specifies if the readiness probe for the container should be enabled
-	ReadinessProbe EnableSwitch `json:"readinessProbe,omitempty"`
+	ReadinessProbe ReadinessProbe `json:"readinessProbe,omitempty"`
 
 	// StartupProbe specifies if the startup probe for the container should be enabled
-	StartupProbe EnableSwitch `json:"startupProbe,omitempty"`
+	StartupProbe StartupProbe `json:"startupProbe,omitempty"`
+}
+
+// LivenessProbe defines the configuration for the liveness probe.
+// A liveness probe checks if the container is still running.
+// If it fails, Kubernetes will restart the container.
+type LivenessProbe struct {
+	EnableSwitch
+
+	// Number of consecutive failures for the probe to be considered failed
+	FailureThreshold int `json:"failureThreshold,omitempty"`
+
+	// Time (in seconds) to wait before starting the liveness probe
+	InitialDelaySeconds int `json:"initialDelaySeconds,omitempty"`
+
+	// Maximum duration (in seconds) that the probe will wait for a response.
+	TimeoutSeconds int `json:"timeoutSeconds,omitempty"`
+
+	// Frequency (in seconds) to perform the probe
+	PeriodSeconds int `json:"periodSeconds,omitempty"`
+}
+
+// ReadinessProbe defines the configuration for the readiness probe.
+// A readiness probe checks if the container is ready to accept traffic.
+// If it fails, Kubernetes removes the pod from the Service endpoints.
+type ReadinessProbe struct {
+	EnableSwitch
+
+	// Number of consecutive failures for the probe to be considered failed
+	FailureThreshold int `json:"failureThreshold,omitempty"`
+
+	// Maximum duration (in seconds) that the probe will wait for a response.
+	TimeoutSeconds int `json:"timeoutSeconds,omitempty"`
+
+	// Frequency (in seconds) to perform the probe
+	PeriodSeconds int `json:"periodSeconds,omitempty"`
+}
+
+// StartupProbe defines the configuration for the startup probe.
+// A startup probe checks if the application within the container has started.
+// While the startup probe is failing, other probes are disabled.
+type StartupProbe struct {
+	EnableSwitch
+
+	// Number of consecutive failures allowed before failing the pod
+	FailureThreshold int `json:"failureThreshold,omitempty"`
+
+	// Maximum duration (in seconds) that the probe will wait for a response.
+	TimeoutSeconds int `json:"timeoutSeconds,omitempty"`
+
+	// Frequency (in seconds) to perform the probe
+	PeriodSeconds int `json:"periodSeconds,omitempty"`
 }
 
 type ControlPlaneSecurity struct {
